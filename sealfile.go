@@ -19,6 +19,15 @@ type Conf struct {
 	APIKey        string `yaml:"apikey"` //CWSeal API Key
 	apiCredential string `yaml:"apicredential"`
 	apiVersion    string `yaml:"version"`
+	baseUrl       string `yaml: "baseurl"`
+}
+
+type jsonRequest struct { //JSON Request struct
+	APIVersion    int    `json:"apiVersion" binding:"required"`
+	Name          string `json:"name" binding:"required"` //filename
+	Hashes        string `json:"hashes" binding:"required"`
+	APIKey        string `json:"APIKey" binding:"required"`
+	APICredential string `json:"apiCredential" binding:"required"`
 }
 
 var (
@@ -27,14 +36,19 @@ var (
 
 func main() {
 
-	readconfig()
-	dateiname := filename()
+	var jsonReq jsonRequest
+
+	readconfig() //get config file content
+
+	jsonReq.Name = filename()               //fill jsson partameter name field
+	jsonRequest.APIVersion = Cfg.apiVersion // API Version from config file
 
 	fmt.Println("Der Dateiname ist: %s", dateiname)
 	fmt.Println("APIKey: %s", Cfg.APIKey)
 
 	//get the hash
 	hashresult := filehasher(dateiname)
+	jsonReq.Hashes = hashresult
 	fmt.Println("Hash in Main: %s", hashresult)
 
 	//	headers := map[string][]string{
@@ -43,7 +57,7 @@ func main() {
 	//	}
 	/*
 		data := bytes.NewBuffer([]byte{jsonReq})
-		req, err := http.NewRequest("POST", "https://developers.cryptowerk.com/platform/API/v6/register", data)
+		req, err := http.NewRequest("POST", Cfg.baseUrl+"register", data)
 		errlog(err)
 		req.Header = headers
 
