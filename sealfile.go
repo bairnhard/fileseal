@@ -18,8 +18,8 @@ import (
 type Conf struct {
 	APIKey        string `yaml:"apikey"` //CWSeal API Key
 	apiCredential string `yaml:"apicredential"`
-	apiVersion    string `yaml:"version"`
-	baseUrl       string `yaml: "baseurl"`
+	apiVersion    int    `yaml:"version"`
+	baseURL       string `yaml: "baseurl"`
 }
 
 type jsonRequest struct { //JSON Request struct
@@ -40,16 +40,16 @@ func main() {
 
 	readconfig() //get config file content
 
-	jsonReq.Name = filename()               //fill jsson partameter name field
-	jsonRequest.APIVersion = Cfg.apiVersion // API Version from config file
+	jsonReq.Name = filename()           //fill jsson partameter name field
+	jsonReq.APIVersion = Cfg.apiVersion // API Version from config file
 
-	fmt.Println("Der Dateiname ist: %s", dateiname)
-	fmt.Println("APIKey: %s", Cfg.APIKey)
+	fmt.Println("Der Dateiname ist: ", jsonReq.Name)
+	fmt.Println("APIKey: ", Cfg.APIKey)
 
 	//get the hash
-	hashresult := filehasher(dateiname)
+	hashresult := filehasher(jsonReq.Name)
 	jsonReq.Hashes = hashresult
-	fmt.Println("Hash in Main: %s", hashresult)
+	fmt.Println("Hash in Main:", hashresult)
 
 	//	headers := map[string][]string{
 	//		"Accept":    []string{"application/json"},
