@@ -97,7 +97,7 @@ func filename() string { // reads filename from command line with flag -f
 	return returnvalue
 }
 
-func filehasher(filename string) string {
+func filehasher(filename string) string { //here we hash the files with SHA256
 	f, err := os.Open(filename)
 	if err != nil {
 		errlog(err)
