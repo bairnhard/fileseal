@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -16,18 +21,16 @@ import (
 
 //Conf stores config parameters
 type Conf struct {
-	APIKey        string `yaml:"apikey"` //CWSeal API Key
-	apiCredential string `yaml:"apicredential"`
-	apiVersion    int    `yaml:"version"`
-	baseURL       string `yaml: "baseurl"`
+	APIKey  string `yaml:"apikey"` //CWSeal API Key
+	SealURL string `yaml:"baseurl"`
 }
 
-type jsonRequest struct { //JSON Request struct
-	APIVersion    int    `json:"apiVersion" binding:"required"`
-	Name          string `json:"name" binding:"required"` //filename
-	Hashes        string `json:"hashes" binding:"required"`
-	APIKey        string `json:"APIKey" binding:"required"`
-	APICredential string `json:"apiCredential" binding:"required"`
+type Cryptowerk struct {
+	MaxSupportedAPIVersion int `json:"maxSupportedAPIVersion"`
+	Documents              []struct {
+		RetrievalID string `json:"retrievalId"`
+	} `json:"documents"`
+	MinSupportedAPIVersion int `json:"minSupportedAPIVersion"`
 }
 
 var (
@@ -36,44 +39,34 @@ var (
 
 func main() {
 
-	var jsonReq jsonRequest
-
 	readconfig() //get config file content
 
-	jsonReq.Name = filename()           //fill jsson partameter name field
-	jsonReq.APIVersion = Cfg.apiVersion // API Version from config file
-
-	fmt.Println("Der Dateiname ist: ", jsonReq.Name)
-	fmt.Println("APIKey: ", Cfg.APIKey)
+	file := filename()
+	cryptowerkapi := Cfg.SealURL
 
 	//get the hash
-	hashresult := filehasher(jsonReq.Name)
-	jsonReq.Hashes = hashresult
-	fmt.Println("Hash in Main:", hashresult)
+	hashresult := filehasher(file)
+	fmt.Println("...Registering to Blockchain")
+	retrievalId, err := registerToBlockchain(hashresult, cryptowerkapi, Cfg.APIKey)
+	errlog(err)
 
-	//	headers := map[string][]string{
-	//		"Accept":    []string{"application/json"},
-	//		"X-API-Key": []string{Cfg.APIKey, " ", Cfg.apiCredential},
-	//	}
-	/*
-		data := bytes.NewBuffer([]byte{jsonReq})
-		req, err := http.NewRequest("POST", Cfg.baseUrl+"register", data)
-		errlog(err)
-		req.Header = headers
+	fmt.Println("RetrievalId: ", retrievalId)
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		errlog(err)
-	*/
+	//log retrieval ID to CSV
+	seallog(retrievalId, file)
+
 }
 
 func readconfig() {
+
+	fmt.Println("Reading config")
 
 	confFile, err := ioutil.ReadFile("sealfile.cfg")
 	errlog(err)
 
 	err = yaml.Unmarshal(confFile, &Cfg)
 	errlog(err)
+
 }
 
 func errlog(err error) {
@@ -91,8 +84,6 @@ func filename() string { // reads filename from command line with flag -f
 
 	flag.Parse()
 
-	fmt.Println("f:", *wordPtr)
-	fmt.Println("tail:", flag.Args())
 	returnvalue := *wordPtr
 	return returnvalue
 }
@@ -109,6 +100,60 @@ func filehasher(filename string) string { //here we hash the files with SHA256
 		errlog(err)
 	}
 	hstring := hex.EncodeToString(h.Sum(nil))
-	fmt.Printf(" Hash: %x", h.Sum(nil))
 	return hstring
+}
+
+func registerToBlockchain(bufhash string, cryptowerkapi string, cryptowerkkey string) (retrievalId string, err error) {
+
+	headers := map[string][]string{
+		"Accept":    []string{"application/json"},
+		"X-API-Key": []string{cryptowerkkey},
+	}
+
+	data := url.Values{}
+	data.Set("version", "6")
+	data.Add("hashes", bufhash)
+
+	req, err := http.NewRequest("POST", cryptowerkapi, bytes.NewBufferString(data.Encode()))
+	errlog(err)
+
+	req.Header = headers
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("cryptowerk responded with error %d", err)
+	}
+
+	defer resp.Body.Close()
+
+	// Successful responses will always return status code 200
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("cryptowerk responded with unexepcted status code %d", resp.StatusCode)
+	}
+
+	seals := &Cryptowerk{}
+	if err := json.NewDecoder(resp.Body).Decode(seals); err != nil {
+		return "", fmt.Errorf("unable to decode Cryptowerk response: %s", err)
+	}
+
+	registerID := seals.Documents[0].RetrievalID
+
+	return registerID, nil
+}
+
+func seallog(retrievalid string, filename string) { //write and append retrieval id to seal log
+
+	t := time.Now()
+
+	f, err := os.OpenFile("seallog.csv", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	errlog(err)
+	defer f.Close()
+	var data = []string{t.String(), retrievalid, filename}
+
+	w := csv.NewWriter(f)
+	w.Write(data)
+	w.Flush()
 }
